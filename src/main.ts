@@ -19,7 +19,7 @@ const addressEl = $('address');
 const localityEl = $('locality');
 const accuracyEl = $('accuracy');
 const coordsEl = $('coords');
-const updatedEl = $('updated');
+const coordsLabel = $('coords-label');
 const errorTitle = $('error-title');
 const errorDetail = $('error-detail');
 const copyBtn = $<HTMLButtonElement>('copy');
@@ -30,11 +30,42 @@ let current: Address | null = null;
 let inflight: AbortController | null = null;
 let pending: GeolocationPosition | null = null;
 let pendingTimer: number | undefined;
+let lastCoords: string | null = null;
+/** When the last position fix arrived. */
+let lastFixAt = 0;
+/** Temporary status ("Updating", "Offline", …) that overrides freshness while set. */
+let statusNote: string | null = null;
+let freshnessTimer: number | undefined;
 
 function setState(state: State, status?: string) {
   stage.dataset.state = state;
-  if (status) statusEl.textContent = status;
-  statusEl.dataset.live = String(state === 'result');
+  clearInterval(freshnessTimer);
+  if (state === 'result') {
+    renderStatus();
+    freshnessTimer = window.setInterval(renderStatus, 1000);
+  } else {
+    if (status) statusEl.textContent = status;
+    statusEl.dataset.live = 'false';
+  }
+}
+
+function setStatusNote(note: string | null) {
+  statusNote = note;
+  if (stage.dataset.state === 'result') renderStatus();
+}
+
+/** Live (<10 s) → "Updated seconds ago" (<30 s) → "Less than a minute ago" (<60 s) → "Updated 3:42 PM". */
+function renderStatus() {
+  const age = (Date.now() - lastFixAt) / 1000;
+  let text: string;
+  if (statusNote) text = statusNote;
+  else if (age < 10) text = 'Live';
+  else if (age < 30) text = 'Updated seconds ago';
+  else if (age < 60) text = 'Less than a minute ago';
+  else text = `Updated ${new Date(lastFixAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+  // Re-checked every second; only touch the DOM (and the live region) on change.
+  if (statusEl.textContent !== text) statusEl.textContent = text;
+  statusEl.dataset.live = String(!statusNote && age < 10);
 }
 
 function start() {
@@ -65,8 +96,12 @@ function stop() {
 
 function onPosition(pos: GeolocationPosition) {
   const { latitude: lat, longitude: lon, accuracy } = pos.coords;
+  lastFixAt = Date.now();
+  if (statusNote === 'Signal lost') statusNote = null;
+  if (stage.dataset.state === 'result') renderStatus();
   accuracyEl.textContent = `±${Math.round(accuracy)} m`;
-  coordsEl.textContent = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  lastCoords = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  coordsEl.textContent = lastCoords;
 
   if (lastLookup) {
     const moved = distanceM(lastLookup.lat, lastLookup.lon, lat, lon);
@@ -96,7 +131,7 @@ async function lookup(pos: GeolocationPosition) {
   if (!current) {
     loadingText.textContent = 'Finding address…';
   } else {
-    statusEl.textContent = 'Updating';
+    setStatusNote('Updating');
   }
 
   try {
@@ -107,7 +142,7 @@ async function lookup(pos: GeolocationPosition) {
     if (ctrl.signal.aborted) return;
     // If we already have an address, keep showing it rather than blanking the screen.
     if (current) {
-      statusEl.textContent = 'Offline';
+      setStatusNote('Offline');
       return;
     }
     showError("Couldn't look up an address", err instanceof Error ? err.message : String(err));
@@ -128,8 +163,8 @@ function render(addr: Address) {
   // Grid addresses ("4100 South" / "3974 West") keep each line whole.
   addressEl.classList.toggle('address--lines', addr.line1Parts.length > 1);
   localityEl.textContent = addr.line2;
-  updatedEl.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  setState('result', 'Live'); // visible first so fitAddress can measure
+  statusNote = null;
+  setState('result'); // visible first so fitAddress can measure
   fitAddress();
   if (changed) {
     addressEl.classList.remove('enter');
@@ -140,7 +175,7 @@ function render(addr: Address) {
 
 function onGeoError(err: GeolocationPositionError) {
   if (current && err.code !== err.PERMISSION_DENIED) {
-    statusEl.textContent = 'Signal lost';
+    setStatusNote('Signal lost');
     return;
   }
   stop();
@@ -179,15 +214,38 @@ function fitAddress() {
   }
 }
 
-async function copyAddress() {
-  if (!current) return;
+/** Copy text, then briefly swap `feedbackEl`'s label to "Copied" / "Copy failed". */
+async function copyText(text: string, feedbackEl: HTMLElement) {
+  const original = feedbackEl.dataset.label ?? (feedbackEl.dataset.label = feedbackEl.textContent ?? '');
   try {
-    await navigator.clipboard.writeText(current.full);
-    copyBtn.textContent = 'Copied';
+    await navigator.clipboard.writeText(text);
+    feedbackEl.textContent = 'Copied';
   } catch {
-    copyBtn.textContent = 'Copy failed';
+    feedbackEl.textContent = 'Copy failed';
   }
-  setTimeout(() => (copyBtn.textContent = 'Copy address'), 1600);
+  clearTimeout(Number(feedbackEl.dataset.timer));
+  feedbackEl.dataset.timer = String(setTimeout(() => (feedbackEl.textContent = original), 1600));
+}
+
+function copyAddress() {
+  if (current) copyText(current.full, copyBtn);
+}
+
+function copyCoords() {
+  if (lastCoords) copyText(lastCoords, coordsLabel);
+}
+
+/** Make a non-button element copy on click/tap, Enter or Space — but not when the user is selecting text. */
+function onActivate(el: HTMLElement, action: () => void) {
+  el.addEventListener('click', () => {
+    if (!window.getSelection()?.toString()) action();
+  });
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      action();
+    }
+  });
 }
 
 $('start').addEventListener('click', start);
@@ -199,6 +257,8 @@ function restart() {
 
 $('refresh').addEventListener('click', restart);
 copyBtn.addEventListener('click', copyAddress);
+onActivate(addressEl, copyAddress);
+onActivate(coordsEl, copyCoords);
 window.addEventListener('resize', fitAddress);
 
 // Pause GPS when the tab is hidden; resume when visible.

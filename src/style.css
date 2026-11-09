@@ -82,6 +82,7 @@ body {
   padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: 999px;
+  white-space: nowrap;
 }
 
 .status[data-live='true'] {
@@ -184,7 +185,10 @@ body {
 .meta {
   margin: 8px 0 0;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Size to the content instead of stretching across the panel. */
+  align-self: flex-start;
+  max-width: 100%;
+  grid-template-columns: auto minmax(0, auto);
   gap: 1px;
   background: var(--border);
   border: 1px solid var(--border);
@@ -216,14 +220,20 @@ body {
   text-overflow: ellipsis;
 }
 
-@media (max-width: 480px) {
-  .meta {
-    grid-template-columns: 1fr 1fr;
-  }
-  .meta > div:nth-child(2) {
-    grid-column: 1 / -1;
-    order: 3;
-  }
+/* ── Tap-to-copy ────────────────────────────────────── */
+.copyable {
+  cursor: pointer;
+  border-radius: 6px;
+  transition: opacity 0.15s ease;
+}
+
+.copyable:active {
+  opacity: 0.6;
+}
+
+.copyable:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
 }
 
 /* ── Buttons ────────────────────────────────────────── */
@@ -386,6 +396,11 @@ body {
 }
 
 /* ── Dev mode panel ─────────────────────────────────── */
+/* Keep the footer credit clear of the floating Dev pill. */
+body:has(.dev) .foot {
+  padding-bottom: 44px;
+}
+
 .dev {
   position: fixed;
   right: max(12px, env(safe-area-inset-right));

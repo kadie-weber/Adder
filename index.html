@@ -14,7 +14,7 @@
   <body>
     <main class="app">
       <header class="top">
-        <span class="brand"><span class="dot" aria-hidden="true"></span>Adder</span>
+        <span class="brand"><span class="dot" aria-hidden="true"></span>Adder <span aria-hidden="true">🐍</span></span>
         <span class="status" id="status" role="status" aria-live="polite">Idle</span>
       </header>
 
@@ -39,12 +39,11 @@
         <!-- Result -->
         <div class="panel panel--result">
           <p class="eyebrow">You're nearest to</p>
-          <h1 class="address" id="address"></h1>
+          <h1 class="address copyable" id="address" title="Tap to copy"></h1>
           <p class="locality" id="locality"></p>
           <dl class="meta">
             <div><dt>Accuracy</dt><dd id="accuracy">—</dd></div>
-            <div><dt>Coordinates</dt><dd id="coords">—</dd></div>
-            <div><dt>Updated</dt><dd id="updated">—</dd></div>
+            <div><dt id="coords-label">Coordinates</dt><dd class="copyable" id="coords" role="button" tabindex="0" aria-describedby="coords-label" title="Tap to copy">—</dd></div>
           </dl>
           <div class="actions">
             <button class="btn btn--primary" id="copy" type="button">Copy address</button>
