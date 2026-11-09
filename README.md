@@ -48,6 +48,12 @@ npm run build   # outputs dist/
 npm run preview
 ```
 
+## Deploy
+
+The beta is at **https://adder.chestnutstudios.xyz**. It's hosted on Cloudflare Workers (static assets), and `wrangler.jsonc` holds the config. Cloudflare's GitHub integration builds and deploys every push to `main`. Pushes to other branches get their own preview URL.
+
+To deploy by hand without going through GitHub: `npm run deploy` (runs `wrangler login` the first time).
+
 ## Notes
 
 Nominatim's public instance has a [usage policy](https://operations.osmfoundation.org/policies/nominatim/) (max 1 request/second, attribution required). For heavy traffic, swap the endpoint in `src/geocode.ts` for a self-hosted instance or a commercial geocoder.

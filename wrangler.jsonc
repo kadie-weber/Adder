@@ -1,0 +1,11 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  // Static site on Cloudflare Workers: serves the Vite build in dist/.
+  "name": "adder",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist"
+  },
+  // Cloudflare creates the DNS record and HTTPS certificate on first deploy.
+  "routes": [{ "pattern": "adder.chestnutstudios.xyz", "custom_domain": true }]
+}
