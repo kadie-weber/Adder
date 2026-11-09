@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0b0d10" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="description" content="Your nearest street address, right now." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Adder</title>
+  </head>
+  <body>
+    <main class="app">
+      <header class="top">
+        <span class="brand"><span class="dot" aria-hidden="true"></span>Adder</span>
+        <span class="status" id="status" role="status" aria-live="polite">Idle</span>
+      </header>
+
+      <section class="stage" id="stage" data-state="idle">
+        <!-- Idle / permission prompt -->
+        <div class="panel panel--idle">
+          <p class="eyebrow">Where am I?</p>
+          <h1 class="lede">Find the street address you're standing at.</h1>
+          <button class="btn btn--primary" id="start" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
+            Use my location
+          </button>
+          <p class="fine">Your location is sent to OpenStreetMap only to look up the address. Nothing is stored.</p>
+        </div>
+
+        <!-- Loading -->
+        <div class="panel panel--loading" aria-hidden="true">
+          <div class="pulse"><span></span><span></span><span></span></div>
+          <p class="eyebrow" id="loading-text">Locating…</p>
+        </div>
+
+        <!-- Result -->
+        <div class="panel panel--result">
+          <p class="eyebrow">You're nearest to</p>
+          <h1 class="address" id="address"></h1>
+          <p class="locality" id="locality"></p>
+          <dl class="meta">
+            <div><dt>Accuracy</dt><dd id="accuracy">—</dd></div>
+            <div><dt>Coordinates</dt><dd id="coords">—</dd></div>
+            <div><dt>Updated</dt><dd id="updated">—</dd></div>
+          </dl>
+          <div class="actions">
+            <button class="btn btn--primary" id="copy" type="button">Copy address</button>
+            <button class="btn btn--ghost" id="refresh" type="button">Refresh</button>
+          </div>
+        </div>
+
+        <!-- Error -->
+        <div class="panel panel--error">
+          <p class="eyebrow eyebrow--warn">Can't get an address</p>
+          <h1 class="lede" id="error-title"></h1>
+          <p class="fine" id="error-detail"></p>
+          <button class="btn btn--primary" id="retry" type="button">Try again</button>
+        </div>
+      </section>
+
+      <footer class="foot">
+        Address data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors
+      </footer>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
