@@ -1,6 +1,10 @@
+import { formatGridAddress } from './grid';
+
 export interface Address {
   /** Primary line, e.g. "1600 Pennsylvania Ave NW" */
   line1: string;
+  /** line1 split for display; Salt Lake grid addresses use two, e.g. ["4100 South", "3974 West"] */
+  line1Parts: string[];
   /** Secondary line, e.g. "Washington, DC 20500" */
   line2: string;
   /** Single-line form for copying */
@@ -59,19 +63,24 @@ export async function reverseGeocode(
   const data = (await res.json()) as NominatimResponse;
   if (data.error || !data.address) throw new Error(data.error ?? 'No address found here');
 
-  return format(data);
+  return format(data, lat, lon);
 }
 
-function format(data: NominatimResponse): Address {
+function format(data: NominatimResponse, lat: number, lon: number): Address {
   const a = data.address!;
   const street = a.road ?? a.pedestrian ?? a.footway ?? a.cycleway ?? a.path;
   const place = a.city ?? a.town ?? a.village ?? a.hamlet ?? a.municipality ?? a.suburb;
 
-  let line1: string;
+  let line1Parts: string[];
   if (street) {
-    line1 = a.house_number ? `${a.house_number} ${street}` : street;
+    const grid = formatGridAddress(street, a.house_number, {
+      lat,
+      lon,
+      inSaltLakeGrid: a.county === 'Salt Lake County',
+    });
+    line1Parts = grid ?? [a.house_number ? `${a.house_number} ${street}` : street];
   } else {
-    line1 = data.name || a.neighbourhood || a.suburb || place || 'Unnamed location';
+    line1Parts = [data.name || a.neighbourhood || a.suburb || place || 'Unnamed location'];
   }
 
   // "City, ST 12345" for US; "City 12345, Region" style elsewhere is close enough.
@@ -82,7 +91,8 @@ function format(data: NominatimResponse): Address {
   if (!isUS && a.country) line2Parts.push(a.country);
   const line2 = line2Parts.filter(Boolean).join(', ');
 
-  return { line1, line2, full: [line1, line2].filter(Boolean).join(', ') };
+  const line1 = line1Parts.join(' ');
+  return { line1, line1Parts, line2, full: [line1, line2].filter(Boolean).join(', ') };
 }
 
 const US_STATES: Record<string, string> = {

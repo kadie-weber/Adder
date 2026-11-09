@@ -1,5 +1,7 @@
 import './style.css';
 import { reverseGeocode, type Address } from './geocode';
+import { distanceM, isSimulating, watchLocation } from './location';
+import { devModeEnabled, mountDevPanel } from './dev';
 
 type State = 'idle' | 'loading' | 'result' | 'error';
 
@@ -22,7 +24,7 @@ const errorTitle = $('error-title');
 const errorDetail = $('error-detail');
 const copyBtn = $<HTMLButtonElement>('copy');
 
-let watchId: number | null = null;
+let stopWatch: (() => void) | null = null;
 let lastLookup: { lat: number; lon: number; at: number } | null = null;
 let current: Address | null = null;
 let inflight: AbortController | null = null;
@@ -36,11 +38,13 @@ function setState(state: State, status?: string) {
 }
 
 function start() {
-  if (!('geolocation' in navigator)) {
-    return showError("Location isn't supported", 'This browser has no geolocation support.');
-  }
-  if (!window.isSecureContext) {
-    return showError('Needs a secure connection', 'Location only works over HTTPS or on localhost.');
+  if (!isSimulating()) {
+    if (!('geolocation' in navigator)) {
+      return showError("Location isn't supported", 'This browser has no geolocation support.');
+    }
+    if (!window.isSecureContext) {
+      return showError('Needs a secure connection', 'Location only works over HTTPS or on localhost.');
+    }
   }
 
   stop();
@@ -48,16 +52,12 @@ function start() {
   loadingText.textContent = 'Locating…';
   setState('loading', 'Locating');
 
-  watchId = navigator.geolocation.watchPosition(onPosition, onGeoError, {
-    enableHighAccuracy: true,
-    maximumAge: 5000,
-    timeout: 20000,
-  });
+  stopWatch = watchLocation(onPosition, onGeoError);
 }
 
 function stop() {
-  if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-  watchId = null;
+  stopWatch?.();
+  stopWatch = null;
   inflight?.abort();
   clearTimeout(pendingTimer);
   pending = null;
@@ -117,11 +117,20 @@ async function lookup(pos: GeolocationPosition) {
 function render(addr: Address) {
   const changed = current?.full !== addr.full;
   current = addr;
-  addressEl.textContent = addr.line1;
+  addressEl.replaceChildren(
+    ...addr.line1Parts.map((part) => {
+      const line = document.createElement('span');
+      line.className = 'address__line';
+      line.textContent = part;
+      return line;
+    }),
+  );
+  // Grid addresses ("4100 South" / "3974 West") keep each line whole.
+  addressEl.classList.toggle('address--lines', addr.line1Parts.length > 1);
   localityEl.textContent = addr.line2;
   updatedEl.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  setState('result', 'Live'); // visible first so fitAddress can measure
   fitAddress();
-  setState('result', 'Live');
   if (changed) {
     addressEl.classList.remove('enter');
     void addressEl.offsetWidth; // restart animation
@@ -156,20 +165,18 @@ function showError(title: string, detail: string) {
   setState('error', 'Error');
 }
 
-/** Shrink very long addresses so they never overflow on narrow screens. */
-function fitAddress() {
-  const len = addressEl.textContent?.length ?? 0;
-  addressEl.dataset.size = len > 40 ? 'xs' : len > 28 ? 's' : len > 18 ? 'm' : 'l';
-}
+const SIZES = ['l', 'm', 's', 'xs'] as const;
 
-function distanceM(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371e3;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(a));
+/** Shrink long addresses so they never overflow on narrow screens. */
+function fitAddress() {
+  if (!current) return;
+  const len = Math.max(...current.line1Parts.map((l) => l.length));
+  let i = len > 40 ? 3 : len > 28 ? 2 : len > 18 ? 1 : 0;
+  addressEl.dataset.size = SIZES[i];
+  // Unbreakable grid lines: step down until the widest one fits.
+  while (i < SIZES.length - 1 && addressEl.scrollWidth > addressEl.clientWidth) {
+    addressEl.dataset.size = SIZES[++i];
+  }
 }
 
 async function copyAddress() {
@@ -185,27 +192,29 @@ async function copyAddress() {
 
 $('start').addEventListener('click', start);
 $('retry').addEventListener('click', start);
-$('refresh').addEventListener('click', () => {
+function restart() {
   current = null;
   start();
-});
+}
+
+$('refresh').addEventListener('click', restart);
 copyBtn.addEventListener('click', copyAddress);
+window.addEventListener('resize', fitAddress);
 
 // Pause GPS when the tab is hidden; resume when visible.
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    if (watchId !== null) stop();
-  } else if (current) {
-    watchId = navigator.geolocation.watchPosition(onPosition, onGeoError, {
-      enableHighAccuracy: true,
-      maximumAge: 5000,
-      timeout: 20000,
-    });
+    if (stopWatch) stop();
+  } else if (current && !stopWatch) {
+    stopWatch = watchLocation(onPosition, onGeoError);
   }
 });
 
-// Skip the prompt screen if permission was already granted.
-navigator.permissions
+if (devModeEnabled()) mountDevPanel(restart);
+
+// Skip the prompt screen if permission was already granted (or a location is simulated).
+if (isSimulating()) start();
+else navigator.permissions
   ?.query({ name: 'geolocation' })
   .then((p) => {
     if (p.state === 'granted') start();
