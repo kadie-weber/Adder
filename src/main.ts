@@ -9,6 +9,8 @@ type State = 'idle' | 'loading' | 'result' | 'error';
 const MIN_MOVE_M = 15;
 /** …and no more often than this (Nominatim policy: max 1 req/s). */
 const MIN_INTERVAL_MS = 5000;
+/** Show "Live" while the last GPS fix is newer than this (seconds). */
+const LIVE_FOR_S = 20;
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -91,18 +93,17 @@ function setStatusNote(note: string | null) {
   if (stage.dataset.state === 'result') renderStatus();
 }
 
-/** Live (<10 s) → "Updated seconds ago" (<30 s) → "Less than a minute ago" (<60 s) → "Updated 3:42 PM". */
+/** Live (<20 s) → "Less than a minute ago" (<60 s) → "Updated 3:42 PM". */
 function renderStatus() {
   const age = (Date.now() - lastFixAt) / 1000;
   let text: string;
   if (statusNote) text = statusNote;
-  else if (age < 10) text = 'Live';
-  else if (age < 30) text = 'Updated seconds ago';
+  else if (age < LIVE_FOR_S) text = 'Live';
   else if (age < 60) text = 'Less than a minute ago';
   else text = `Updated ${new Date(lastFixAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
   // Re-checked every second; only touch the DOM (and the live region) on change.
   if (statusEl.textContent !== text) statusEl.textContent = text;
-  statusEl.dataset.live = String(!statusNote && age < 10);
+  statusEl.dataset.live = String(!statusNote && age < LIVE_FOR_S);
 }
 
 function start() {
