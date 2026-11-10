@@ -39,6 +39,7 @@ let freshnessTimer: number | undefined;
 
 function setState(state: State, status?: string) {
   stage.dataset.state = state;
+  keepScreenOn(state === 'loading' || state === 'result');
   clearInterval(freshnessTimer);
   if (state === 'result') {
     renderStatus();
@@ -46,6 +47,42 @@ function setState(state: State, status?: string) {
   } else {
     if (status) statusEl.textContent = status;
     statusEl.dataset.live = 'false';
+  }
+}
+
+/**
+ * Screen Wake Lock: keep the display on while we're locating or showing an address.
+ * The browser drops the lock whenever the page is hidden, so it's re-requested on return.
+ */
+let wakeLock: WakeLockSentinel | null = null;
+let wantWakeLock = false;
+let wakeLockRequesting = false;
+
+async function keepScreenOn(on: boolean) {
+  wantWakeLock = on;
+  if (!on) {
+    const lock = wakeLock;
+    wakeLock = null;
+    await lock?.release().catch(() => {});
+    return;
+  }
+  if (wakeLock || wakeLockRequesting || document.hidden || !('wakeLock' in navigator)) return;
+  wakeLockRequesting = true;
+  try {
+    const lock = await navigator.wakeLock.request('screen');
+    if (!wantWakeLock) {
+      await lock.release();
+      return;
+    }
+    wakeLock = lock;
+    lock.addEventListener('release', () => {
+      if (wakeLock === lock) wakeLock = null;
+    });
+  } catch {
+    // Can be refused (e.g. iOS Low Power Mode, or no user interaction yet): try again on the next tap.
+    document.addEventListener('pointerdown', () => wantWakeLock && keepScreenOn(true), { once: true });
+  } finally {
+    wakeLockRequesting = false;
   }
 }
 
@@ -265,8 +302,9 @@ window.addEventListener('resize', fitAddress);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     if (stopWatch) stop();
-  } else if (current && !stopWatch) {
-    stopWatch = watchLocation(onPosition, onGeoError);
+  } else {
+    if (current && !stopWatch) stopWatch = watchLocation(onPosition, onGeoError);
+    if (wantWakeLock) keepScreenOn(true);
   }
 });
 
